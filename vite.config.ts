@@ -5,6 +5,8 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
+    // The app is deployed as a project page, not at the domain root.
+    base: '/scenecover-finder/',
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
