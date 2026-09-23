@@ -27,6 +27,8 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm install
+      - name: Restore Vite source entry
+        run: cp source-index.html index.html
       - name: Build
         run: npm run build
       - name: Setup Pages
