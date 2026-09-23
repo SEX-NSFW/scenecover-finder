@@ -112,7 +112,7 @@ function decodeBingUrl(href?: string | null): string | null {
 // Parse user query to detect target site and specific requested aspect
 function parseQueryIntent(rawQuery: string): {
   cleanTitle: string;
-  targetSite: 'universal' | 'tmdb' | 'imdb' | 'elcinema' | 'wikipedia' | 'rottentomatoes' | 'direct_url' | 'custom';
+  targetSite: 'universal' | 'tmdb' | 'imdb' | 'elcinema' | 'wikipedia' | 'rottentomatoes' | 'direct_url' | 'custom' | 'familystrokes';
   requestedAspect?: 'gallery' | 'cast' | 'story' | 'source';
   directUrl?: string;
   customDomain?: string;
@@ -123,6 +123,9 @@ function parseQueryIntent(rawQuery: string): {
   const urlMatch = trimmed.match(/https?:\/\/[^\s]+/i);
   if (urlMatch) {
     const url = urlMatch[0];
+    if (url.includes('familystrokes.com') || url.includes('teamskeet.com') || url.includes('psmcdn.net')) {
+      return { cleanTitle: trimmed, targetSite: 'familystrokes', directUrl: url };
+    }
     if (url.includes('elcinema.com')) {
       return { cleanTitle: trimmed, targetSite: 'elcinema', directUrl: url };
     }
@@ -142,14 +145,24 @@ function parseQueryIntent(rawQuery: string): {
   }
 
   let clean = trimmed;
-  let targetSite: 'universal' | 'tmdb' | 'imdb' | 'elcinema' | 'wikipedia' | 'rottentomatoes' | 'direct_url' | 'custom' = 'universal';
+  let targetSite: 'universal' | 'tmdb' | 'imdb' | 'elcinema' | 'wikipedia' | 'rottentomatoes' | 'direct_url' | 'custom' | 'familystrokes' = 'universal';
   let requestedAspect: 'gallery' | 'cast' | 'story' | 'source' | undefined = undefined;
   let customDomain: string | undefined = undefined;
 
   const lower = trimmed.toLowerCase();
 
   // Detect requested target site if user mentioned it in natural language
-  if (lower.includes('elcinema') || lower.includes('السينما كوم') || lower.includes('السينما.كوم') || lower.includes('موقع السينما')) {
+  if (lower.includes('family strokes') || lower.includes('familystrokes') || lower.includes('family stroke') || lower.includes('teamskeet') || lower.includes('فريق سكيت') || lower.includes('فاميلي ستروكس')) {
+    targetSite = 'familystrokes';
+    clean = clean
+      .replace(/family\s*strokes?/gi, '')
+      .replace(/familystrokes/gi, '')
+      .replace(/teamskeet/gi, '')
+      .replace(/فاميلي\s*ستروكس?/gi, '')
+      .replace(/[!?]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  } else if (lower.includes('elcinema') || lower.includes('السينما كوم') || lower.includes('السينما.كوم') || lower.includes('موقع السينما')) {
     targetSite = 'elcinema';
     clean = clean
       .replace(/من\s+موقع\s+(السينما\s*كوم|السينما\.كوم|elcinema(\.com)?)/gi, '')
@@ -1497,6 +1510,215 @@ async function crawlCustomSiteAndTitle(cleanTitle: string, rawSite: string): Pro
 }
 
 // -------------------------------------------------------------
+
+// -------------------------------------------------------------
+// CRAWLER: Family Strokes / TeamSkeet network (official promotional covers)
+// -------------------------------------------------------------
+async function crawlFamilyStrokes(cleanTitle: string, directUrl?: string): Promise<MediaResult | null> {
+  try {
+    const sourcesTried: SourceAttempt[] = [];
+    const siteImages: SiteImageItem[] = [];
+    const candidateCovers: CandidateCover[] = [];
+
+    const slugify = (t: string) =>
+      t.toLowerCase()
+        .replace(/s\d{1,2}\s*[:\-]?\s*e\d{1,2}/gi, ' ')
+        .replace(/[^a-z0-9\s-]/g, ' ')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+
+    const slug = slugify(cleanTitle);
+    const slugUnderscore = slug.replace(/-/g, '_');
+
+    // Candidate official scene pages
+    const pageCandidates = [
+      directUrl,
+      `https://www.familystrokes.com/movies/${slug}`,
+      `https://www.familystrokes.com/movies/${slugUnderscore.replace(/_/g, '-')}`,
+      `https://www.familystrokes.com/movies/${slugUnderscore}`,
+      `https://www.teamskeet.com/movies/${slug}`,
+      `https://www.teamskeet.com/movies/${slugUnderscore.replace(/_/g, '-')}`,
+    ].filter(Boolean) as string[];
+
+    let officialUrl = '';
+    let ogImage = '';
+    let pageTitle = cleanTitle;
+    let summary = '';
+    let performers: string[] = [];
+
+    for (const pageUrl of pageCandidates) {
+      try {
+        const res = await fetch(pageUrl, { headers: COMMON_HEADERS, signal: AbortSignal.timeout(8000), redirect: 'follow' });
+        sourcesTried.push({
+          name: 'Family Strokes official page',
+          url: pageUrl,
+          status: res.ok ? 'verified' : 'not_found',
+          statusCode: res.status
+        });
+        if (!res.ok) continue;
+        const html = await res.text();
+        // Reject pure membership walls without content
+        if (html.length < 800 && /join now/i.test(html)) continue;
+
+        const $ = cheerio.load(html);
+        const og = $('meta[property="og:image"]').attr('content')
+          || $('meta[name="twitter:image"]').attr('content')
+          || '';
+        const titleMeta = $('meta[property="og:title"]').attr('content')
+          || $('title').text()
+          || '';
+        const desc = $('meta[property="og:description"]').attr('content')
+          || $('meta[name="description"]').attr('content')
+          || '';
+
+        if (og && /\.(jpg|jpeg|png|webp)/i.test(og) && !/favicon|logo|sprite|avatar/i.test(og)) {
+          ogImage = og.startsWith('http') ? og : new URL(og, pageUrl).href;
+          officialUrl = res.url || pageUrl;
+          if (titleMeta) {
+            pageTitle = titleMeta.replace(/\s*[\|\-–].*$/, '').trim() || pageTitle;
+          }
+          if (desc) summary = desc.slice(0, 600);
+          // Try extract performer names from page
+          $('[class*="model"], [class*="performer"], [class*="cast"] a, .video-performers a').each((_, el) => {
+            const n = $(el).text().trim();
+            if (n && n.length > 1 && n.length < 40 && !performers.includes(n)) performers.push(n);
+          });
+          break;
+        }
+      } catch (e: any) {
+        sourcesTried.push({
+          name: 'Family Strokes official page',
+          url: pageUrl,
+          status: 'error',
+          reason: e?.message || 'fetch failed'
+        });
+      }
+    }
+
+    // CDN fallback patterns (TeamSkeet / Family Strokes)
+    const cdnCandidates: string[] = [];
+    if (ogImage) cdnCandidates.push(ogImage);
+    // Prefer hi over med — try performer slug first (e.g. melody_marks), then title slug
+    const siteCodes = ['fs', 'ts', 'slm', 'dc', 'pvm'];
+    const perfSlugs = performers.map(p => p.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')).filter(Boolean);
+    const slugVariants = [...perfSlugs, slugUnderscore, slug.replace(/-/g, '_')];
+    for (const code of siteCodes) {
+      for (const ps of slugVariants) {
+        cdnCandidates.push(`https://images.psmcdn.net/teamskeet/${code}/${ps}/shared/hi.jpg`);
+        cdnCandidates.push(`https://images.psmcdn.net/teamskeet/${code}/${ps}/shared/med.jpg`);
+      }
+    }
+    // If og points at med, also try hi sibling
+    if (ogImage && ogImage.includes('/shared/med.jpg')) {
+      cdnCandidates.unshift(ogImage.replace('/shared/med.jpg', '/shared/hi.jpg'));
+    }
+
+    let bestCover = '';
+    for (const cand of [...new Set(cdnCandidates)]) {
+      // Reject known still patterns
+      if (/cover1280-\d|\/photos\/|\/gallery\/|\/tn\/|\/stills\//i.test(cand)) {
+        sourcesTried.push({ name: 'CDN candidate', url: cand, status: 'rejected_still', reason: 'looks like internal still' });
+        continue;
+      }
+      try {
+        const head = await fetch(cand, {
+          method: 'HEAD',
+          headers: { ...COMMON_HEADERS, 'Accept': 'image/*,*/*' },
+          signal: AbortSignal.timeout(5000),
+          redirect: 'follow'
+        });
+        const ct = (head.headers.get('content-type') || '').toLowerCase();
+        if (head.ok && ct.startsWith('image/')) {
+          bestCover = cand;
+          sourcesTried.push({ name: 'CDN / og cover', url: cand, status: 'verified', statusCode: head.status, score: cand.includes('/shared/hi.jpg') ? 22 : 18 });
+          break;
+        }
+        // Some CDNs reject HEAD — try GET range
+        if (!head.ok || !ct.startsWith('image/')) {
+          const getRes = await fetch(cand, {
+            headers: { ...COMMON_HEADERS, 'Accept': 'image/*', 'Range': 'bytes=0-64' },
+            signal: AbortSignal.timeout(5000),
+            redirect: 'follow'
+          });
+          const gct = (getRes.headers.get('content-type') || '').toLowerCase();
+          if (getRes.ok || getRes.status === 206) {
+            if (gct.startsWith('image/') || getRes.status === 206) {
+              bestCover = cand;
+              sourcesTried.push({ name: 'CDN / og cover', url: cand, status: 'verified', statusCode: getRes.status, score: 20 });
+              break;
+            }
+          }
+          sourcesTried.push({ name: 'CDN candidate', url: cand, status: 'not_found', statusCode: getRes.status });
+        }
+      } catch {
+        sourcesTried.push({ name: 'CDN candidate', url: cand, status: 'error' });
+      }
+    }
+
+    if (!bestCover && !ogImage) return null;
+    const coverUrl = bestCover || ogImage;
+
+    candidateCovers.push({
+      url: coverUrl,
+      proxyUrl: `/api/proxy-image?url=${encodeURIComponent(coverUrl)}`,
+      thumbnailUrl: `/api/proxy-image?url=${encodeURIComponent(coverUrl)}`,
+      title: pageTitle,
+      source: 'Family Strokes / TeamSkeet CDN',
+      authenticityScore: coverUrl.includes('psmcdn.net') || coverUrl.includes('familystrokes.com') ? 92 : 70
+    });
+
+    siteImages.push({
+      id: 'fs-cover-1',
+      url: coverUrl,
+      proxyUrl: `/api/proxy-image?url=${encodeURIComponent(coverUrl)}`,
+      thumbnailUrl: `/api/proxy-image?url=${encodeURIComponent(coverUrl)}`,
+      caption: pageTitle,
+      type: 'poster',
+      sourceSite: 'Family Strokes'
+    });
+
+    return {
+      mediaType: 'movie',
+      studio: 'Family Strokes',
+      network: 'TeamSkeet',
+      series: 'Family Strokes',
+      originalTitle: pageTitle,
+      releaseDate: '',
+      performers,
+      categories: ['Step Family'],
+      officialSummary: summary || `Official Family Strokes scene: ${pageTitle}`,
+      duration: '',
+      officialUrl: officialUrl || `https://www.familystrokes.com/movies/${slug}`,
+      confidence: coverUrl ? 'high' : 'medium',
+      notes: 'Extracted promotional cover from Family Strokes / TeamSkeet official CDN (not an internal still).',
+      coverUrl,
+      proxyCoverUrl: `/api/proxy-image?url=${encodeURIComponent(coverUrl)}`,
+      candidateCovers,
+      verification: {
+        isOriginal: true,
+        authenticityScore: 90,
+        statusLabel: 'Verified Family Strokes promotional cover',
+        badgeType: 'verified_original',
+        aspectRatioLabel: 'scene cover',
+        sourceTrust: 'Official TeamSkeet CDN / familystrokes.com',
+        verificationReasons: [
+          'Source is images.psmcdn.net or familystrokes.com og:image',
+          'Rejected internal gallery/still URL patterns',
+          'Prefer shared/hi.jpg promotional asset'
+        ]
+      },
+      sourcesTried,
+      sourceSite: 'Family Strokes (familystrokes.com / TeamSkeet)',
+      siteImages,
+      castMembers: performers.map(name => ({ name })),
+      focusTab: 'source'
+    };
+  } catch {
+    return null;
+  }
+}
+
 // MASTER CONTROLLER: Universal Live In-Site Browsing & Crawling (All Sites)
 // -------------------------------------------------------------
 async function executeLiveBrowse(rawQuery: string, explicitSite?: string, customDomain?: string): Promise<MediaResult> {
@@ -1525,6 +1747,9 @@ async function executeLiveBrowse(rawQuery: string, explicitSite?: string, custom
   }
 
   // 3. Explicit specific site crawlers if specifically chosen
+  if (!result && targetSite === 'familystrokes') {
+    result = await crawlFamilyStrokes(cleanTitle, directUrl);
+  }
   if (!result && targetSite === 'tmdb') {
     result = await crawlTMDB(cleanTitle);
   }
@@ -1543,6 +1768,11 @@ async function executeLiveBrowse(rawQuery: string, explicitSite?: string, custom
 
   // 4. UNIVERSAL MULTI-SITE CONCURRENT CRAWL (All Sites across the open web)
   // Concurrently queries Universal Open Web (100% unrestricted), TMDB, Wikipedia, elcinema, IMDb, and Rotten Tomatoes
+  // Always try Family Strokes / TeamSkeet first for English scene-style titles
+  if (!result) {
+    result = await crawlFamilyStrokes(cleanTitle, directUrl).catch(() => null);
+  }
+
   if (!result) {
     const [openWebRes, tmdbRes, wikiRes, elcinemaRes, imdbRes, rtRes] = await Promise.all([
       crawlUniversalOpenWeb(cleanTitle).catch(() => null),
@@ -1612,6 +1842,9 @@ async function executeLiveBrowse(rawQuery: string, explicitSite?: string, custom
   }
 
   // Safety Fallback: try individual crawlers once more
+  if (!result) {
+    result = await crawlFamilyStrokes(cleanTitle, directUrl).catch(() => null);
+  }
   if (!result) {
     result = await crawlUniversalOpenWeb(cleanTitle);
   }

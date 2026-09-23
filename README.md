@@ -1,20 +1,27 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Scene Cover Finder — Family Strokes
 
-# Run and deploy your AI Studio app
+استخراج الغلاف الترويجي الرسمي من **Family Strokes / TeamSkeet**.
 
-This contains everything you need to run your app locally.
+## التشغيل
 
-View your app in AI Studio: https://ai.studio/apps/c2542ad3-cdd5-410a-b2c0-6271a10b4f51
+```bash
+npm install
+npm run dev
+```
 
-## Run Locally
+افتح: http://localhost:3000
 
-**Prerequisites:**  Node.js
+## أمثلة بحث
 
+- `Family Vacation!!! Family Strokes`
+- `Family Vacation`
+- رابط مباشر: `https://www.familystrokes.com/movies/family-vacation`
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## كيف يعمل
+
+1. يكتشف الاستعلام (Family Strokes / TeamSkeet)
+2. يفتح صفحة المشهد الرسمية على familystrokes.com
+3. يستخرج `og:image` ثم يتحقق من CDN: `images.psmcdn.net/teamskeet/fs/.../shared/hi.jpg`
+4. يرفض لقطات داخلية (stills / gallery)
+
+ملاحظة: GitHub Pages لا يشغّل هذا السيرفر — شغّله محلياً أو على Vercel/Railway.

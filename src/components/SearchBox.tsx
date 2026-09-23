@@ -20,7 +20,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
 }) => {
   const t = TRANSLATIONS[currentLang];
   const [query, setQuery] = useState(initialQuery);
-  const [selectedSite, setSelectedSite] = useState<'universal' | 'tmdb' | 'imdb' | 'elcinema' | 'wikipedia' | 'rottentomatoes' | 'custom'>('universal');
+  const [selectedSite, setSelectedSite] = useState<'universal' | 'tmdb' | 'imdb' | 'elcinema' | 'wikipedia' | 'rottentomatoes' | 'custom' | 'familystrokes'>('familystrokes');
   const [customDomain, setCustomDomain] = useState('');
 
   useEffect(() => {
@@ -58,6 +58,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
     { id: 'universal', label: 'كافة مواقع الويب المفتوحة (تغطية شاملة)', icon: Globe },
     { id: 'tmdb', label: 'TheMovieDB العالمية (4K)', icon: Sparkles },
     { id: 'imdb', label: 'IMDb العالمية', icon: Tv },
+    { id: 'familystrokes', label: 'Family Strokes', icon: Film },
     { id: 'elcinema', label: 'السينما.كوم', icon: Film },
     { id: 'wikipedia', label: 'ويكيبيديا (Wikipedia)', icon: BookOpen },
     { id: 'rottentomatoes', label: 'Rotten Tomatoes', icon: Layers },
@@ -104,7 +105,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
             type="text"
             value={customDomain}
             onChange={(e) => setCustomDomain(e.target.value)}
-            placeholder="مثال: IMDb أو elcinema أو netflix أو shahid أو أي موقع تريده..."
+            placeholder="مثال: Family Vacation!!! Family Strokes"
             className="flex-1 w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-1.5 text-white placeholder-neutral-500 focus:outline-none focus:border-amber-500 font-medium"
           />
         </div>
