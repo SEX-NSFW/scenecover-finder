@@ -5,8 +5,8 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
-    // The app is deployed as a project page, not at the domain root.
-    base: '/scenecover-finder/',
+    // GitHub Pages uses a project subpath; Vercel serves from the domain root.
+    base: process.env.VERCEL ? '/' : '/scenecover-finder/',
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {

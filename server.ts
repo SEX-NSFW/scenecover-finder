@@ -1912,7 +1912,7 @@ async function executeLiveBrowse(rawQuery: string, explicitSite?: string, custom
 // -------------------------------------------------------------
 // SERVER INITIALIZATION
 // -------------------------------------------------------------
-async function startServer() {
+export async function createApp() {
   const app = express();
   app.use(express.json());
 
@@ -2233,9 +2233,13 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`CineCover Live Web Browser running on http://0.0.0.0:${PORT}`);
-  });
+  return app;
 }
 
-startServer();
+if (!process.env.VERCEL) {
+  createApp().then((app) => {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`CineCover Live Web Browser running on http://0.0.0.0:${PORT}`);
+    });
+  });
+}
