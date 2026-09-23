@@ -1,0 +1,7 @@
+{
+  "name": "CineCover",
+  "description": "CineCover - المتصفح ومحرك الاستخراج الحي المباشر للأعمال والملصقات وصور الكواليس من كافة مواقع الويب العالمية وقواعد البيانات السينمائية دون قيود.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
